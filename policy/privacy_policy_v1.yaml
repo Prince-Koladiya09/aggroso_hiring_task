@@ -1,0 +1,185 @@
+policy_version: "1.0-mock"
+organization: "Acme Corp (fictional)"
+title: "Acme Privacy Request Handling Policy v1.0"
+effective_date: "2026-01-01"
+
+disclaimer: >-
+  This tool supports internal handling of privacy requests according to the supplied
+  organizational policy (mock "Acme Privacy Request Handling Policy v1.0"). It is an
+  information-management and workflow aid. It does not provide legal advice and does
+  not determine, certify, or guarantee legal or regulatory compliance. All outcomes
+  require human review.
+
+sla:
+  acknowledge_days: 3
+  fulfil_days: 30
+  extension_days: 30
+  max_extensions: 1
+  at_risk_days: 7
+
+rules:
+  POL-SLA-1:
+    name: "Standard Fulfilment SLA"
+    description: "Acknowledge within 3 days. Fulfil within 30 calendar days of receipt."
+    parameters:
+      acknowledge_days: 3
+      fulfil_days: 30
+
+  POL-SLA-2:
+    name: "Extension SLA"
+    description: "One extension of up to 30 days is allowed with Approver justification."
+    parameters:
+      extension_days: 30
+      max_extensions: 1
+
+  POL-SLA-3:
+    name: "Deadline Alert Status"
+    description: "Requests with 7 or fewer days remaining are flagged AT RISK. Past due are OVERDUE."
+    parameters:
+      at_risk_days: 7
+
+  POL-ID-1:
+    name: "Level 1 Identity Verification"
+    description: "Access requests need Level 1 verification: name, registered email, and account ID all match."
+    parameters:
+      level: 1
+      required_fields: ["name", "email", "account_id"]
+
+  POL-ID-2:
+    name: "Level 2 Identity Verification"
+    description: "Correction and deletion need Level 2: Level 1 plus a one-time code (mock OTP)."
+    parameters:
+      level: 2
+      required_fields: ["name", "email", "account_id", "otp"]
+      max_otp_attempts: 3
+
+  POL-ID-3:
+    name: "Authorized Agent Verification"
+    description: "Requests from an authorized agent need an authorization-on-file flag."
+    parameters:
+      requires_authorization_on_file: true
+
+  POL-RET-1:
+    name: "Legal Hold Excluded from Mutation"
+    description: "Records marked legal_hold must not be deleted or altered."
+    parameters:
+      blocks: ["delete", "correct"]
+
+  POL-RET-2:
+    name: "Billing Retention Excluded from Deletion"
+    description: "Billing and invoice records are retained for 7 years and excluded from deletion."
+    parameters:
+      retention_years: 7
+      blocks: ["delete"]
+
+  POL-RET-3:
+    name: "Security Audit Logs Excluded from Deletion"
+    description: "Security audit events are retained and excluded from deletion."
+    parameters:
+      blocks: ["delete"]
+
+  POL-RED-1:
+    name: "Redact Third-Party Personal Data"
+    description: "Exports must redact other individuals' personal data."
+
+  POL-RED-2:
+    name: "Redact Internal Staff Identifiers"
+    description: "Exports must redact internal staff identifiers and internal notes."
+
+  POL-RED-3:
+    name: "Redact Security-Sensitive Fields"
+    description: "Exports must redact security-sensitive fields (password hash, risk score, fraud flags)."
+
+  POL-APR-1:
+    name: "Plan and Inventory Approval"
+    description: "A human must approve the plan and inventory before any further processing."
+    parameters:
+      required_role: "approver"
+
+  POL-APR-2:
+    name: "Separate Action Approvals"
+    description: "Correction and deletion each require their own separate approval."
+    parameters:
+      required_role: "approver"
+      separate_approvals: true
+
+  POL-APR-3:
+    name: "Four-Eyes Principle for Deletions"
+    description: "The approver of a deletion must differ from the analyst who initiated it."
+    parameters:
+      required_role: "approver"
+      must_differ_from_initiator: true
+
+  POL-AUD-1:
+    name: "Comprehensive Audit Logging"
+    description: "All tool calls, approvals, failures, and actions are retained in the audit trail."
+
+  # Implementation-derived rule (not in the original SRS rule table; see SRS v1.1 change log).
+  # Backs FR-708: only subject-editable profile fields may be corrected.
+  POL-COR-1:
+    name: "Editable Subject Fields Only"
+    description: "Corrections may only change subject-editable profile fields (name, email, phone, address, marketing opt-in). Identifiers and security fields are not correctable."
+    parameters:
+      fields_source: "editable_subject_fields"
+
+verification:
+  access:
+    level: 1
+    fields: ["name", "email", "account_id"]
+  correction:
+    level: 2
+    fields: ["name", "email", "account_id", "otp"]
+  deletion:
+    level: 2
+    fields: ["name", "email", "account_id", "otp"]
+
+retention:
+  legal_hold:
+    blocks: ["delete", "correct"]
+    rule_id: "POL-RET-1"
+  billing:
+    years: 7
+    blocks: ["delete"]
+    rule_id: "POL-RET-2"
+  security_audit:
+    blocks: ["delete"]
+    rule_id: "POL-RET-3"
+
+redaction:
+  restricted_security_fields:
+    - password_hash
+    - risk_score
+    - fraud_flag
+    - risk_signal
+  restricted_internal_fields:
+    - internal_notes
+    - assigned_agent
+    - agent_id
+  patterns:
+    - name: "email"
+      regex: '[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
+    - name: "phone"
+      regex: '(?:\+?1[-. ]?)?\(?[0-9]{3}\)?[-. ]?[0-9]{3}[-. ]?[0-9]{4}'
+
+approvals:
+  ttl_hours: 72
+  plan: {role: approver}
+  correction: {role: approver, separate: true}
+  deletion: {role: approver, separate: true, must_differ_from_initiator: true}
+  export_release: {role: approver}
+
+llm:
+  max_description_chars: 2000
+  excerpt_chars: 160
+
+editable_subject_fields:
+  - full_name
+  - email
+  - phone
+  - address
+  - marketing_opt_in
+
+deletion_strategies:
+  profiles: "HARD_DELETE"
+  tickets: "HARD_DELETE"
+  activity_logs: "ANONYMIZE"

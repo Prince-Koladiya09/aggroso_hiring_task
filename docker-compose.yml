@@ -1,0 +1,15 @@
+services:
+  workbench:
+    build: .
+    ports: ["8000:8000"]
+    environment:
+      SECRET_KEY: ${SECRET_KEY:-}            # optional: stable sessions across restarts
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      FORCE_MOCK_LLM: ${FORCE_MOCK_LLM:-true}
+      FAULT_INJECTION_ENABLED: ${FAULT_INJECTION_ENABLED:-false}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8000}
+      DATABASE_URL: sqlite:////app/data/app.db
+    volumes: ["workbench-data:/app/data"]
+volumes:
+  workbench-data:
