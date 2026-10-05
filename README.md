@@ -4,7 +4,78 @@
 
 An internal web app where privacy staff fulfil **access**, **correction** and **deletion** requests across three mock data sources (profiles, support tickets, activity logs). An AI agent interprets each request, searches the data, and proposes a plan. **Humans approve every modifying action**, and deterministic code enforces the policy regardless of what the model says.
 
+## Live demo
+
+**https://aggroso-hiring-task.onrender.com/**
+
+- Sign in with one of the [test accounts](#test-accounts-mock-seeded) below (they are also listed on the login page).
+- The demo is hosted on a free tier: the first load after a period of inactivity can take **30-60 seconds** while the service wakes up.
+- The demo database is **not persistent**. It resets to the seeded data whenever the service restarts, so anything you create may disappear.
+- The demo runs on the **mock LLM** (no API key), which is deterministic and covers all scenarios S1-S10.
+
 Specification: [`docs/SRS_PRD_v1.1.md`](docs/SRS_PRD_v1.1.md) &middot; Agent usage log: [`AGENT_USAGE.md`](AGENT_USAGE.md) &middot; What changed in v1.1: [`docs/GAP_REPORT.md`](docs/GAP_REPORT.md)
+
+## System flow
+
+### Architecture
+
+```mermaid
+flowchart LR
+    U["Browser<br/>React SPA"] -->|"REST /api + JWT"| API["FastAPI backend<br/>role checks on every call"]
+
+    API --> WF["Workflow engine<br/>state machine + deadlines"]
+    API --> AG["AI agent<br/>read-only tools"]
+    API --> AP["Approvals<br/>plan / correction / deletion / export / extension"]
+    API --> EX["Executor<br/>idempotent writes"]
+    API --> RD["Redaction + leak scan"]
+
+    AG -->|"proposes plan"| LLM{{"LLM<br/>Claude or mock<br/>fallback planner on failure"}}
+    AG -->|"tool calls"| GW
+    EX -->|"approved actions only"| GW
+    RD -->|"reads"| GW
+
+    GW["Tool Gateway<br/>single choke point:<br/>caller, role, state, verification,<br/>approval, policy, caps"]
+
+    GW --> DS[("Mock data sources<br/>profiles / tickets / logs<br/>SQLite")]
+    GW -.->|"every call, allowed or denied"| AUD[("Audit trail<br/>hash-chained, append-only")]
+    WF -.-> AUD
+    AP -.-> AUD
+    EX -.-> AUD
+
+    POL["Policy YAML<br/>deterministic rules"] --> GW
+    POL --> AG
+```
+
+### Request lifecycle
+
+```mermaid
+flowchart TD
+    A["Analyst creates request<br/>access / correction / deletion"] --> B{"Required info<br/>present?"}
+    B -- "No: POL-ID-1 / POL-ID-2" --> C["AWAITING_INFO<br/>missing-info panel"]
+    C --> B
+    B -- "Yes" --> D["Verify identity<br/>OTP, ambiguity check"]
+    D --> E["Run agent<br/>interpret, search read-only,<br/>propose plan"]
+    E --> F["Policy validation<br/>hallucinated, excluded or injected<br/>actions discarded and audited"]
+    F --> G{"Approver reviews plan"}
+    G -- "Rejected" --> E
+    G -- "Approved" --> H{"Request type"}
+
+    H -- "Access" --> I["Generate export<br/>redaction + leak scan"]
+    I --> J{"Export release<br/>approval"}
+    J -- "Approved" --> K["Release export"]
+
+    H -- "Correction" --> L{"CORRECTION approval<br/>before/after diff"}
+    H -- "Deletion" --> M{"DELETION approval<br/>four-eyes: approver differs from<br/>creator and agent runner"}
+    L -- "Approved" --> N["Execute via Tool Gateway<br/>idempotent, lease-based"]
+    M -- "Approved" --> N
+
+    N --> O{"Action failed?"}
+    O -- "Yes" --> P["Explicit retry only<br/>reconcile or detect drift"]
+    P --> N
+    O -- "No" --> Q["Generate fulfilment record"]
+    K --> Q
+    Q --> R["Closed<br/>audit chain verifiable"]
+```
 
 ## Quick start
 
@@ -75,6 +146,15 @@ Covers SRS §16.1: deadlines, exhaustive illegal state transitions, verification
 ## Configuration
 
 See [`.env.example`](.env.example). Highlights: `LLM_PROVIDER`/`FORCE_MOCK_LLM`/`LLM_API_KEY`/`LLM_MODEL` (real model), `SIMULATE_LLM_OUTAGE` (S10), `FAULT_INJECTION_ENABLED` (S5), `CORS_ORIGINS`, `SECRET_KEY` (production refuses the default). To use Claude: set `FORCE_MOCK_LLM=false`, `LLM_PROVIDER=anthropic`, `LLM_API_KEY=...`.
+
+## Deployment
+
+The app runs as a single container (FastAPI serving the built SPA on port 8000). The live demo is deployed on [Render](https://render.com) from the repository `Dockerfile`.
+
+- Set `SECRET_KEY` to a long random string (production mode refuses the default).
+- SQLite lives in `./data/app.db`. Mount a persistent volume there if you want data to survive restarts; without one the DB resets and reseeds on each start.
+- Run a **single instance** only (single-process SQLite).
+- Set `SHOW_TEST_ACCOUNTS=false` for anything other than a demo.
 
 ## Limitations and assumptions
 
